@@ -155,12 +155,14 @@ async def handle_data(peer_id, peer, data):
         to_peer_id = data['payload']['to']
         await check_permissions(peer_id, to_peer_id)
 
+        my_host = await Host.get(id=peer_id).prefetch_related('user')
+        my_user = my_host.user
         payload = data['payload'].copy()
         payload.update({
             'from': peer_id,
             'user': {
-                'id': 0,
-                'name': 'pcapid',
+                'id': my_user.id,
+                'name': my_user.name,
                 'external_id': '',
                 'external_provider': '',
             },
