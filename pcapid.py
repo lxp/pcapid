@@ -357,7 +357,7 @@ async def metrics(request):
     return json(None, status=204)
 
 
-register_tortoise(app, db_url='sqlite://:memory:', modules={'models': [__name__]}, generate_schemas=True)
+register_tortoise(app, db_url='sqlite://db.sqlite3', modules={'models': [__name__]}, generate_schemas=True)
 
 
 if __name__ == '__main__':
