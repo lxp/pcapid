@@ -1,3 +1,4 @@
+import functools
 import secrets
 import string
 
@@ -5,7 +6,7 @@ from passlib.context import CryptContext
 from sanic import Sanic
 from sanic.exceptions import abort
 from sanic.request import json_loads
-from sanic.response import file, json, json_dumps
+from sanic.response import file, html, json, json_dumps
 from tortoise import fields
 from tortoise.contrib.sanic import register_tortoise
 from tortoise.exceptions import DoesNotExist
@@ -60,8 +61,22 @@ def rand_string(length):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
-@app.websocket('/')
-async def websocket(request, ws):
+def websocket_wrapper(app, subprotocols=None):
+    app.enable_websocket()
+
+    def response(handler):
+        websocket_handler = functools.partial(app._websocket_handler, handler, subprotocols=subprotocols)
+        websocket_handler.__name__ = 'websocket_handler_' + handler.__name__
+        return websocket_handler
+
+    return response
+
+
+@app.route('/')
+async def index(request):
+    if 'session_id' not in request.args:
+        return html('<!DOCTYPE html><html><head><title>pcapid</title><style>html { font-family: sans-serif; }</style></head><body><h1>Welcome!</h1><p>This is an pcapid instance, an open-source pc API implementation for your self-hosting needs. You can find more information about the project on <a href="https://github.com/lxp/pcapid">GitHub</a>.</p></body></html>')
+
     print(request.args)
 
     unsanitized_session_id = request.args['session_id'][0]
@@ -71,8 +86,19 @@ async def websocket(request, ws):
     except DoesNotExist:
         abort(401)
 
-    peer_id = host.id
-    peer = peers[peer_id]
+    request.ctx.peer_id = host.id
+
+    return await websocket(request)
+
+
+@websocket_wrapper(app)
+async def websocket(request, ws):
+    peer_id = request.ctx.peer_id
+    if peer_id in peers:
+        peer = peers[peer_id]
+    else:
+        peer = peers[peer_id] = Peer()
+
     peer.build = request.args['build'][0] or None
     peer.sdk_version = request.args['sdk_version'][0] or None
     peer.ws = ws
@@ -247,7 +273,6 @@ async def auth(request):
         peer_id = rand_string(28)
         host = await Host.create(id=peer_id, session_id=session_id, user=user)
 
-    peers[peer_id] = Peer()
     data = {
         'instance_id': '',
         'user_id': user.id,
